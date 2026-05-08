@@ -1,10 +1,15 @@
 import re
-import uuid
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from pathlib import Path
 
 
-_SAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
+_SAFE_CHARS = re.compile(r"[^\w.-]+", re.UNICODE)
+
+
+@dataclass(frozen=True)
+class PairBlobNames:
+    metadata: str
+    data: str
 
 
 def sanitize_filename(filename: str) -> str:
@@ -29,22 +34,60 @@ def sanitize_user_id(user_id: str) -> str:
     return sanitized[:80]
 
 
-def build_blob_name(
-    user_id: str,
-    filename: str,
-    now: datetime | None = None,
-    upload_id: str | None = None,
-) -> str:
-    safe_user_id = sanitize_user_id(user_id)
-    safe_name = sanitize_filename(filename)
-    current = now or datetime.now(timezone.utc)
-    safe_upload_id = upload_id or uuid.uuid4().hex
-    if not re.fullmatch(r"[A-Za-z0-9_-]{8,64}", safe_upload_id):
-        raise ValueError("upload_id must contain only letters, numbers, '_' or '-'")
+def metadata_base_name(filename: str) -> str | None:
+    basename = Path(filename).name.strip()
+    if basename.endswith(".meta.toml"):
+        base = basename.removesuffix(".meta.toml")
+        return base or None
+    return None
 
-    # 사용자별/날짜별 prefix와 UUID를 붙여 파일명이 충돌하지 않게 한다.
-    return (
-        f"uploads/{safe_user_id}/"
-        f"{current:%Y/%m/%d}/"
-        f"{safe_upload_id}-{safe_name}"
+
+def validate_upload_pair_names(metadata_filename: str, data_filename: str) -> None:
+    metadata_name = Path(metadata_filename).name.strip()
+    data_name = Path(data_filename).name.strip()
+    metadata_base = metadata_base_name(metadata_name)
+
+    if metadata_base is None:
+        raise ValueError("metadata file must be named <name>.meta.toml")
+
+    if not data_name:
+        raise ValueError("data filename must not be empty")
+
+    if data_name.endswith(".meta.toml"):
+        raise ValueError("data file must not be a .meta.toml file")
+
+    if not Path(data_name).suffix:
+        raise ValueError("data file must have an extension, such as .pdf or .docx")
+
+    if metadata_base != Path(data_name).stem:
+        raise ValueError(
+            "metadata and data filenames must share the same <name>: "
+            f"expected {Path(data_name).stem}.meta.toml, got {metadata_name}"
+        )
+
+
+def build_pair_blob_names(
+    user_id: str,
+    metadata_filename: str,
+    data_filename: str,
+) -> PairBlobNames:
+    validate_upload_pair_names(metadata_filename, data_filename)
+
+    safe_user_id = sanitize_user_id(user_id)
+    metadata_name = Path(metadata_filename).name.strip()
+    data_name = Path(data_filename).name.strip()
+    base = metadata_base_name(metadata_name)
+    if base is None:
+        raise ValueError("metadata file must be named <name>.meta.toml")
+
+    safe_base = sanitize_filename(base)
+    safe_metadata_name = sanitize_filename(metadata_name)
+    safe_data_name = sanitize_filename(data_name)
+    prefix = f"uploads/{safe_user_id}/{safe_base}"
+
+    # 같은 user_id와 같은 <name>은 항상 같은 blob 경로를 사용한다.
+    # 이 고정 경로 덕분에 서버가 기존 meta 파일을 찾아 skip/update를 판단할 수 있다.
+    return PairBlobNames(
+        metadata=f"{prefix}/{safe_metadata_name}",
+        data=f"{prefix}/{safe_data_name}",
     )

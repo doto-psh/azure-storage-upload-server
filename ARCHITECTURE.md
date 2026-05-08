@@ -9,23 +9,23 @@
 ```text
 사용자 PC / 업로드 CLI
   |
-  | 1. 파일명, 파일 크기, user_id로 SAS 발급 요청
+  | 1. meta 파일 내용, 파일명, 파일 크기, user_id로 업로드 계획 요청
   v
 FastAPI SAS 발급 서버
   |
-  | 2. App Registration / Service Principal로 Azure 인증
+  | 2. 기존 meta blob 내용을 조회해 skip/upload/update 판단
   v
 Azure Blob Storage
   |
-  | 3. 특정 blob 하나에 대한 짧은 업로드 SAS URL 생성
+  | 3. upload/update가 필요하면 두 blob에 대한 짧은 업로드 SAS URL 생성
   v
 FastAPI SAS 발급 서버
   |
-  | 4. SAS URL 반환
+  | 4. skip/upload/update 결과와 SAS URL 반환
   v
 사용자 PC / 업로드 CLI
   |
-  | 5. SAS URL로 Azure Blob Storage에 직접 PUT 업로드
+  | 5. upload/update일 때만 SAS URL로 Azure Blob Storage에 직접 PUT 업로드
   v
 Azure Blob Storage Container
 ```
@@ -57,7 +57,7 @@ Azure Blob Storage Container
 
 ### FastAPI SAS 발급 서버
 
-서버는 사용자의 업로드 요청을 받아 Azure Blob Storage에 업로드 가능한 짧은 SAS URL을 발급합니다.
+서버는 사용자의 업로드 요청을 받아 기존 meta 파일 내용과 비교하고, 필요한 경우 Azure Blob Storage에 업로드 가능한 짧은 SAS URL을 발급합니다.
 
 서버만 다음 값을 가지고 있습니다.
 
@@ -78,7 +78,6 @@ MAX_UPLOAD_BYTES
 SAS 발급 서버가 Azure에 본인 신원을 증명하기 위해 사용합니다.
 
 Azure는 아무 서버에게나 SAS URL 생성 권한을 주지 않습니다. 따라서 SAS 발급 서버는 App Registration / Service Principal을 통해 Azure에 인증합니다.
-```
 
 ## 업로드 동작
 
@@ -89,34 +88,48 @@ uv run azure-upload upload ./report.meta.toml ./report.pdf \
   --server-url http://127.0.0.1:9990
 ```
 
-CLI는 각 파일마다 다음 정보를 서버에 보냅니다.
+CLI는 다음 정보를 서버에 한 번 보냅니다.
 
 ```json
 {
   "user_id": "parksh",
-  "filename": "report.pdf",
-  "content_type": "application/pdf",
-  "size_bytes": 123456,
-  "upload_id": "0f3a..."
+  "metadata_filename": "report.meta.toml",
+  "metadata_content": "title = \"Report\"",
+  "metadata_content_type": "application/toml",
+  "metadata_size_bytes": 16,
+  "data_filename": "report.pdf",
+  "data_content_type": "application/pdf",
+  "data_size_bytes": 123456
 }
 ```
 
 `user_id`를 직접 지정하지 않으면 CLI는 OS 사용자명을 사용합니다.
 
-서버는 blob 경로를 자동 생성합니다.
+서버는 사용자별 고정 blob 경로를 자동 생성합니다.
 
 ```text
-uploads/{user_id}/{yyyy}/{mm}/{dd}/{upload_id}-{filename}
+uploads/{user_id}/{name}/{name}.meta.toml
+uploads/{user_id}/{name}/{name}.{ext}
 ```
 
 예:
 
 ```text
-uploads/parksh/2026/05/07/0f3a...-report.meta.toml
-uploads/parksh/2026/05/07/0f3a...-report.pdf
+uploads/parksh/report/report.meta.toml
+uploads/parksh/report/report.pdf
 ```
 
-서버는 Azure에 User Delegation SAS를 요청하고, 특정 blob 하나에 대해서만 유효한 업로드 URL을 반환합니다.
+서버는 기존 meta blob 내용을 조회해 다음처럼 판단합니다.
+
+```text
+- 기존 meta 내용이 로컬 meta 내용과 같음: skip
+- 같은 meta 파일 이름이 있지만 내용이 다름: update
+- 같은 meta 파일 이름이 없음: upload
+```
+
+`skip`이면 SAS URL을 만들지 않고 CLI도 파일을 업로드하지 않습니다.
+
+`upload` 또는 `update`이면 서버는 Azure에 User Delegation SAS를 요청하고, meta/data 두 blob에 대해서만 유효한 업로드 URL을 반환합니다.
 
 SAS URL의 특징:
 
@@ -127,7 +140,7 @@ SAS URL의 특징:
 - read/list/delete 권한 없음
 ```
 
-CLI는 서버가 반환한 SAS URL로 Azure Blob Storage에 직접 업로드합니다.
+CLI는 `upload` 또는 `update`일 때만 서버가 반환한 SAS URL로 Azure Blob Storage에 직접 업로드합니다. `skip`일 때는 원본 문서 내용도 비교하지 않습니다.
 
 ## 서버 실행 방법
 
@@ -213,13 +226,13 @@ uv run azure-upload upload /path/to/report.meta.toml /path/to/report.pdf \
 이 경우 blob 경로는 다음처럼 생성됩니다.
 
 ```text
-uploads/alice/2026/05/07/{upload_id}-report.meta.toml
-uploads/alice/2026/05/07/{upload_id}-report.pdf
+uploads/alice/report/report.meta.toml
+uploads/alice/report/report.pdf
 ```
 
-`--user-id`를 생략하면 OS 사용자명이 자동으로 사용됩니다. 같은 명령으로 업로드되는
-2개 파일은 동일한 `{upload_id}`를 공유하므로 Blob Storage 안에서도 한 묶음으로
-식별할 수 있습니다.
+`--user-id`를 생략하면 OS 사용자명이 자동으로 사용됩니다. 같은 `user_id`와 같은
+`<name>`은 항상 같은 blob 경로를 사용하므로, 다음 실행 때 기존 meta 내용과 비교할
+수 있습니다.
 
 ## 에러 처리
 
@@ -255,8 +268,8 @@ AuthorizationPermissionMismatch
 관리자에게 아래 역할 부여를 요청해야 합니다.
 
 ```text
-Storage Blob Delegator
-Storage Blob Data Contributor
+Storage Blob Delegator: User Delegation SAS 발급용
+Storage Blob Data Contributor: 기존 meta 조회와 blob 업로드/덮어쓰기용
 ```
 
 대상은 SAS 발급 서버가 사용하는 App Registration / Service Principal입니다.

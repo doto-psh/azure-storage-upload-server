@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
+from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import ClientSecretCredential, DefaultAzureCredential
 from azure.storage.blob import (
+    BlobClient,
     BlobSasPermissions,
     BlobServiceClient,
     UserDelegationKey,
@@ -72,13 +75,21 @@ class AzureBlobSasIssuer:
         token = self._generate_sas(blob_name, delegation_key, starts_at, expires_at)
         account = self._settings.azure_storage_account_name
         container = self._settings.azure_storage_container_name
-        
+        encoded_blob_name = quote(blob_name, safe="/")
+
         # CLI는 이 URL에 PUT 요청을 보내 실제 파일을 Azure Blob Storage에 업로드한다.
         upload_url = (
             f"https://{account}.blob.core.windows.net/"
-            f"{container}/{blob_name}?{token}"
+            f"{container}/{encoded_blob_name}?{token}"
         )
         return UploadSas(blob_name=blob_name, upload_url=upload_url, expires_at=expires_at)
+
+    def download_blob_bytes(self, blob_name: str) -> bytes | None:
+        blob_client = self._get_blob_client(blob_name)
+        try:
+            return blob_client.download_blob().readall()
+        except ResourceNotFoundError:
+            return None
 
     def _generate_sas(
         self,
@@ -97,4 +108,10 @@ class AzureBlobSasIssuer:
             start=starts_at,
             expiry=expires_at,
             protocol="https",
+        )
+
+    def _get_blob_client(self, blob_name: str) -> BlobClient:
+        return self._client.get_blob_client(
+            container=self._settings.azure_storage_container_name,
+            blob=blob_name,
         )

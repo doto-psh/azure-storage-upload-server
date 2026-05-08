@@ -1,8 +1,11 @@
-from datetime import datetime, timezone
-
 import pytest
 
-from azure_script.blob_names import build_blob_name, sanitize_filename, sanitize_user_id
+from azure_script.blob_names import (
+    build_pair_blob_names,
+    sanitize_filename,
+    sanitize_user_id,
+    validate_upload_pair_names,
+)
 
 
 def test_sanitize_filename_uses_basename_and_safe_chars() -> None:
@@ -23,21 +26,33 @@ def test_sanitize_user_id_rejects_empty_names() -> None:
         sanitize_user_id("...")
 
 
-def test_build_blob_name_scopes_to_user_and_date() -> None:
-    now = datetime(2026, 5, 7, tzinfo=timezone.utc)
-    blob_name = build_blob_name(
+def test_build_pair_blob_names_scopes_to_user_and_stable_name() -> None:
+    blob_names = build_pair_blob_names(
         "../alice",
+        "report.meta.toml",
         "report.pdf",
-        now=now,
-        upload_id="upload123",
     )
 
-    assert blob_name.startswith("uploads/alice/2026/05/07/")
-    assert blob_name.endswith("upload123-report.pdf")
+    assert blob_names.metadata == "uploads/alice/report/report.meta.toml"
+    assert blob_names.data == "uploads/alice/report/report.pdf"
 
 
-def test_build_blob_name_rejects_unsafe_upload_id() -> None:
-    now = datetime(2026, 5, 7, tzinfo=timezone.utc)
+def test_build_pair_blob_names_preserves_korean_filename() -> None:
+    blob_names = build_pair_blob_names(
+        "alice",
+        "신청방법.meta.toml",
+        "신청방법.pdf",
+    )
 
+    assert blob_names.metadata == "uploads/alice/신청방법/신청방법.meta.toml"
+    assert blob_names.data == "uploads/alice/신청방법/신청방법.pdf"
+
+
+def test_validate_upload_pair_names_rejects_mismatched_names() -> None:
     with pytest.raises(ValueError):
-        build_blob_name("alice", "report.pdf", now=now, upload_id="../bad")
+        validate_upload_pair_names("invoice.meta.toml", "report.pdf")
+
+
+def test_validate_upload_pair_names_rejects_missing_data_extension() -> None:
+    with pytest.raises(ValueError):
+        validate_upload_pair_names("report.meta.toml", "report")

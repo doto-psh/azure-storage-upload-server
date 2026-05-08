@@ -1,19 +1,18 @@
 import getpass
 import mimetypes
-import uuid
 from pathlib import Path
 
 import httpx
 import typer
+
+from azure_script.blob_names import metadata_base_name
 
 
 app = typer.Typer(help="Upload files to Azure Blob Storage via a short-lived SAS URL.")
 
 
 def _metadata_base_name(path: Path) -> str | None:
-    if path.name.endswith(".meta.toml"):
-        return path.name.removesuffix(".meta.toml")
-    return None
+    return metadata_base_name(path.name)
 
 
 def _split_upload_pair(first_file: Path, second_file: Path) -> tuple[Path, Path]:
@@ -44,41 +43,59 @@ def _split_upload_pair(first_file: Path, second_file: Path) -> tuple[Path, Path]
     return metadata_file, data_file
 
 
-def _build_sas_payload(file: Path, user_id: str, upload_id: str) -> dict[str, object]:
-    content_type = mimetypes.guess_type(file.name)[0] or "application/octet-stream"
-    # 서버에는 파일 자체가 아니라 SAS 발급에 필요한 메타데이터만 보낸다.
+def _guess_content_type(file: Path) -> str:
+    return mimetypes.guess_type(file.name)[0] or "application/octet-stream"
+
+
+def _build_upload_plan_payload(
+    metadata_file: Path,
+    data_file: Path,
+    user_id: str,
+) -> dict[str, object]:
+    # 서버는 meta 파일 내용만 받아 기존 meta blob과 비교한다.
+    # 원본 문서 내용은 서버로 보내지 않고, 필요할 때만 SAS URL로 Azure에 직접 업로드한다.
     return {
         "user_id": user_id,
-        "filename": file.name,
-        "content_type": content_type,
-        "size_bytes": file.stat().st_size,
-        "upload_id": upload_id,
+        "metadata_filename": metadata_file.name,
+        "metadata_content": metadata_file.read_text(encoding="utf-8"),
+        "metadata_content_type": _guess_content_type(metadata_file),
+        "metadata_size_bytes": metadata_file.stat().st_size,
+        "data_filename": data_file.name,
+        "data_content_type": _guess_content_type(data_file),
+        "data_size_bytes": data_file.stat().st_size,
     }
 
 
-def _request_sas_and_upload(
+def _request_upload_plan(
     client: httpx.Client,
     base_url: str,
-    file: Path,
     payload: dict[str, object],
-) -> str:
-    # 1단계: 내부 SAS 발급 서버에 단일 blob 업로드용 SAS URL을 요청한다.
-    sas_response = client.post(
-        f"{base_url}/uploads/sas",
+) -> dict[str, object]:
+    # 1단계: 내부 서버에 skip/upload/update 판단과 필요한 SAS URL 생성을 요청한다.
+    plan_response = client.post(
+        f"{base_url}/uploads/plan",
         json=payload,
     )
-    if sas_response.status_code >= 400:
+    if plan_response.status_code >= 400:
         raise typer.BadParameter(
-            f"SAS request failed for {file.name}: {sas_response.status_code} {sas_response.text}"
+            "Upload plan request failed: "
+            f"{plan_response.status_code} {plan_response.text}"
         )
 
-    sas_payload = sas_response.json()
-    headers = sas_payload["required_headers"]
+    return dict(plan_response.json())
+
+
+def _upload_with_sas(
+    client: httpx.Client,
+    file: Path,
+    upload_target: dict[str, object],
+) -> str:
+    headers = upload_target["required_headers"]
     with file.open("rb") as handle:
         # 2단계: 서버가 발급한 SAS URL로 Azure Blob Storage에 직접 PUT 업로드한다.
         # 이 요청은 FastAPI 서버를 거치지 않으므로 대용량 파일 트래픽이 서버에 실리지 않는다.
         upload_response = client.put(
-            sas_payload["upload_url"],
+            str(upload_target["upload_url"]),
             headers=headers,
             content=handle,
         )
@@ -89,7 +106,7 @@ def _request_sas_and_upload(
             f"{file.name}: {upload_response.status_code} {upload_response.text}"
         )
 
-    return str(sas_payload["blob_name"])
+    return str(upload_target["blob_name"])
 
 
 @app.command()
@@ -106,25 +123,37 @@ def upload(
     base_url = server_url.rstrip("/")
     # user_id를 지정하지 않으면 현재 OS 사용자명을 blob 경로 식별자로 사용한다.
     effective_user_id = user_id or getpass.getuser()
-    # 한 번의 실행에서 올라가는 meta/data 파일이 blob 경로에서도 같은 묶음으로 보이게 한다.
-    upload_id = uuid.uuid4().hex
 
     with httpx.Client(timeout=None) as client:
-        metadata_blob_name = _request_sas_and_upload(
+        plan = _request_upload_plan(
             client,
             base_url,
-            metadata_file,
-            _build_sas_payload(metadata_file, effective_user_id, upload_id),
+            _build_upload_plan_payload(metadata_file, data_file, effective_user_id),
         )
-        data_blob_name = _request_sas_and_upload(
-            client,
-            base_url,
-            data_file,
-            _build_sas_payload(data_file, effective_user_id, upload_id),
-        )
+        action = str(plan["action"])
 
-    typer.echo(f"Uploaded {metadata_file} to {metadata_blob_name}")
-    typer.echo(f"Uploaded {data_file} to {data_blob_name}")
+        if action == "skip":
+            typer.echo(
+                "Skipped "
+                f"{metadata_file} and {data_file}; metadata is unchanged at "
+                f"{plan['metadata_blob_name']}"
+            )
+            return
+
+        files_by_kind = {
+            "metadata": metadata_file,
+            "data": data_file,
+        }
+        uploaded_blob_names: list[tuple[Path, str]] = []
+        for upload_target in plan["uploads"]:
+            kind = str(upload_target["kind"])
+            upload_file = files_by_kind[kind]
+            blob_name = _upload_with_sas(client, upload_file, upload_target)
+            uploaded_blob_names.append((upload_file, blob_name))
+
+    verb = "Updated" if action == "update" else "Uploaded"
+    for uploaded_file, blob_name in uploaded_blob_names:
+        typer.echo(f"{verb} {uploaded_file} to {blob_name}")
 
 
 @app.command(hidden=True)
