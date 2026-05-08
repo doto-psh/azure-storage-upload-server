@@ -1,93 +1,99 @@
-# Azure Blob SAS Upload
+# Azure Blob Storage Upload Server
 
-This project provides a small FastAPI server that decides whether a paired
-metadata/document upload should be skipped, uploaded, or updated, then issues
-short-lived SAS URLs for the files that need to be written.
+Azure Blob Storage에 파일을 업로드하기 위한 Web UI 서버입니다.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full architecture, Azure role
-requirements, and user upload instructions.
+사용자는 브라우저에서 `.meta.toml` 파일과 원본 문서 파일을 선택하고 업로드합니다. 서버는 업로드 가능 여부를 판단한 뒤 짧은 시간만 유효한 SAS URL을 발급하고, 브라우저는 해당 SAS URL로 Azure Blob Storage에 직접 업로드합니다.
 
-## Setup
+자세한 설치와 사용 방법은 [UPLOAD_GUIDE.md](UPLOAD_GUIDE.md)를 참고하세요.
 
-Install dependencies:
+## 주요 기능
+
+- Web UI에서 파일 2개를 선택해 업로드
+- `<name>.meta.toml`과 `<name>.<파일형식>` 파일명 규칙 검증
+- 기존 메타데이터 내용과 비교해 `skip`, `upload`, `update` 자동 판단
+- Azure Client Secret은 서버의 `.env`에만 보관
+- 브라우저는 제한된 SAS URL로만 Blob Storage에 업로드
+
+## 업로드 규칙
+
+업로드 파일은 항상 2개입니다.
+
+```text
+<name>.meta.toml
+<name>.<파일형식>
+```
+
+예:
+
+```text
+LiteLLM Workflow.meta.toml
+LiteLLM Workflow.pdf
+```
+
+두 파일의 `<name>`이 다르면 업로드할 수 없습니다.
+
+처리 기준:
+
+- 같은 이름의 메타 파일이 없으면 메타 파일과 원본 문서를 `upload`
+- 같은 이름의 메타 파일이 있고 내용이 같으면 둘 다 `skip`
+- 같은 이름의 메타 파일이 있지만 내용이 다르면 메타 파일과 원본 문서를 `update`
+
+## 빠른 실행
+
+의존성을 설치합니다.
 
 ```bash
 uv sync
 ```
 
-Create local config:
+환경 변수 파일을 만듭니다.
 
 ```bash
 cp .env.example .env
 ```
 
-Update `.env` with your Azure Storage account, container, and service principal
-values. The service principal needs permission to generate user delegation keys
-and read/write blobs, such as `Storage Blob Data Contributor` scoped to the
-storage account.
+`.env`에 Azure Storage와 App Registration 값을 입력합니다.
 
-## Run the Server
-
-```bash
-uv run uvicorn azure_script.server:app --reload
+```env
+AZURE_STORAGE_ACCOUNT_NAME=your-storage-account
+AZURE_STORAGE_CONTAINER_NAME=your-container
+AZURE_TENANT_ID=your-tenant-id
+AZURE_CLIENT_ID=your-client-id
+AZURE_CLIENT_SECRET=your-client-secret
+SAS_TTL_MINUTES=15
+MAX_UPLOAD_BYTES=5368709120
 ```
 
-Open the web UI:
+Web UI 서버를 실행합니다.
+
+```bash
+uv run uvicorn azure_script.server:app --reload --port 9990
+```
+
+브라우저에서 접속합니다.
 
 ```text
-http://127.0.0.1:8000/
+http://127.0.0.1:9990/
 ```
 
-## Upload Files
+clone부터 Web UI 업로드까지의 전체 절차는 [UPLOAD_GUIDE.md](UPLOAD_GUIDE.md)에 정리되어 있습니다.
 
-### Web UI
+## 문서
 
-Use the web UI to enter a `user_id`, select `<name>.meta.toml`, select
-`<name>.<extension>`, and upload. The UI calls the internal upload plan API and
-then uploads files directly to Azure Blob Storage with SAS URLs.
+- [UPLOAD_GUIDE.md](UPLOAD_GUIDE.md): 사용자용 Web UI 업로드 가이드
+- [ARCHITECTURE.md](ARCHITECTURE.md): SAS 발급 서버 구조와 Azure 권한 설명
+- [.env.example](.env.example): 환경 변수 예시
 
-For browser uploads, configure Azure Storage CORS for the UI origin. Local
-development typically needs:
+## 개발
 
-```text
-Allowed origins: http://127.0.0.1:8000
-Allowed methods: PUT, OPTIONS
-Allowed headers: x-ms-blob-type, content-type, x-ms-*
-Exposed headers: *
-```
-
-### CLI
+테스트 실행:
 
 ```bash
-uv run azure-upload upload ./file.meta.toml ./file.pdf \
-  --server-url http://127.0.0.1:8000
+uv run pytest
 ```
 
-The upload command requires exactly two files:
+보안 주의사항:
 
-- `<name>.meta.toml`
-- `<name>.<extension>`, such as `<name>.pdf` or `<name>.docx`
-
-Both files must share the same `<name>`. For example, `report.meta.toml` and
-`report.pdf` are valid. `report.meta.toml` and `invoice.pdf` are rejected before
-any Azure upload starts.
-
-The server compares the local `.meta.toml` byte hash with the existing metadata
-blob hash for the same `user_id` and `<name>`:
-
-- Same metadata content: skip both files.
-- Same metadata filename but different metadata content: update both files.
-- No existing metadata filename: upload both files.
-
-The CLI uses your OS username as the blob path user identifier by default. To
-override it:
-
-```bash
-uv run azure-upload upload ./file.meta.toml ./file.pdf \
-  --server-url http://127.0.0.1:8000 \
-  --user-id alice
-```
-
-The CLI asks the internal server for an upload plan. When the plan is `upload`
-or `update`, it uploads both files directly to Azure Blob Storage with `PUT`.
-The Azure client secret stays only on the server.
+- `.env`는 Git에 커밋하지 않습니다.
+- Azure Client Secret, SAS URL, 실제 업로드 파일은 공개 저장소에 올리지 않습니다.
+- Web UI에서 직접 Blob Storage로 업로드하므로 Storage Account CORS 설정이 필요할 수 있습니다. 자세한 내용은 [UPLOAD_GUIDE.md](UPLOAD_GUIDE.md)의 CORS 섹션을 참고하세요.
