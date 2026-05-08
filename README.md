@@ -31,18 +31,27 @@ account.
 uv run uvicorn azure_script.server:app --reload
 ```
 
-## Upload a File
+## Upload Files
 
 ```bash
-uv run azure-upload upload ./file.pdf \
+uv run azure-upload upload ./file.meta.toml ./file.pdf \
   --server-url http://127.0.0.1:8000
 ```
+
+The upload command requires exactly two files:
+
+- `<name>.meta.toml`
+- `<name>.<extension>`, such as `<name>.pdf` or `<name>.docx`
+
+Both files must share the same `<name>`. For example, `report.meta.toml` and
+`report.pdf` are valid. `report.meta.toml` and `invoice.pdf` are rejected before
+any Azure upload starts.
 
 The CLI uses your OS username as the blob path user identifier by default. To
 override it:
 
 ```bash
-uv run azure-upload upload ./file.pdf \
+uv run azure-upload upload ./file.meta.toml ./file.pdf \
   --server-url http://127.0.0.1:8000 \
   --user-id alice
 ```

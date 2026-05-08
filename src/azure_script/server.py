@@ -14,6 +14,7 @@ class UploadSasRequest(BaseModel):
     filename: str = Field(..., min_length=1, max_length=255)
     content_type: str = Field("application/octet-stream", min_length=1, max_length=255)
     size_bytes: int = Field(..., ge=0)
+    upload_id: str | None = Field(None, min_length=8, max_length=64)
 
 
 class UploadSasResponse(BaseModel):
@@ -52,7 +53,11 @@ def create_upload_sas(
     try:
         # user_id와 파일명을 서버에서 안전한 blob 경로로 변환한다.
         # 사용자가 container나 전체 경로를 직접 지정하지 못하게 하기 위한 단계다.
-        blob_name = build_blob_name(request.user_id, request.filename)
+        blob_name = build_blob_name(
+            request.user_id,
+            request.filename,
+            upload_id=request.upload_id,
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

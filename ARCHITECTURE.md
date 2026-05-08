@@ -85,18 +85,19 @@ Azure는 아무 서버에게나 SAS URL 생성 권한을 주지 않습니다. �
 사용자가 CLI를 실행합니다.
 
 ```bash
-uv run azure-upload upload ./file.pdf \
+uv run azure-upload upload ./report.meta.toml ./report.pdf \
   --server-url http://127.0.0.1:9990
 ```
 
-CLI는 다음 정보를 서버에 보냅니다.
+CLI는 각 파일마다 다음 정보를 서버에 보냅니다.
 
 ```json
 {
   "user_id": "parksh",
-  "filename": "file.pdf",
+  "filename": "report.pdf",
   "content_type": "application/pdf",
-  "size_bytes": 123456
+  "size_bytes": 123456,
+  "upload_id": "0f3a..."
 }
 ```
 
@@ -105,13 +106,14 @@ CLI는 다음 정보를 서버에 보냅니다.
 서버는 blob 경로를 자동 생성합니다.
 
 ```text
-uploads/{user_id}/{yyyy}/{mm}/{dd}/{uuid}-{filename}
+uploads/{user_id}/{yyyy}/{mm}/{dd}/{upload_id}-{filename}
 ```
 
 예:
 
 ```text
-uploads/parksh/2026/05/07/0f3a...-file.pdf
+uploads/parksh/2026/05/07/0f3a...-report.meta.toml
+uploads/parksh/2026/05/07/0f3a...-report.pdf
 ```
 
 서버는 Azure에 User Delegation SAS를 요청하고, 특정 blob 하나에 대해서만 유효한 업로드 URL을 반환합니다.
@@ -174,23 +176,36 @@ curl http://127.0.0.1:9990/healthz
 ## 사용자가 스크립트로 업로드하는 방법
 
 사용자는 프로젝트 또는 배포된 CLI를 받은 뒤 다음 명령으로 업로드합니다.
+업로드는 항상 2개 파일을 한 묶음으로 처리합니다.
+
+필수 파일 이름 규칙:
+
+```text
+<name>.meta.toml
+<name>.<파일형식>
+```
+
+예를 들어 `report.meta.toml`과 `report.pdf`는 업로드 가능하지만,
+`report.meta.toml`과 `invoice.pdf`는 `<name>`이 다르므로 업로드가 차단됩니다.
 
 ```bash
-uv run azure-upload upload /path/to/file.pdf \
+uv run azure-upload upload /path/to/report.meta.toml /path/to/report.pdf \
   --server-url http://127.0.0.1:9990
 ```
 
 예:
 
 ```bash
-uv run azure-upload upload /Users/parksh/parksh/azure-script/files/DBSafer_접속_및_결재시스템_신청방법.pdf \
+uv run azure-upload upload \
+  /Users/parksh/parksh/azure-script/files/DBSafer_접속_및_결재시스템_신청방법.meta.toml \
+  /Users/parksh/parksh/azure-script/files/DBSafer_접속_및_결재시스템_신청방법.pdf \
   --server-url http://127.0.0.1:9990
 ```
 
 사용자 ID를 명시하고 싶으면 `--user-id`를 추가합니다.
 
 ```bash
-uv run azure-upload upload /path/to/file.pdf \
+uv run azure-upload upload /path/to/report.meta.toml /path/to/report.pdf \
   --server-url http://127.0.0.1:9990 \
   --user-id alice
 ```
@@ -198,10 +213,13 @@ uv run azure-upload upload /path/to/file.pdf \
 이 경우 blob 경로는 다음처럼 생성됩니다.
 
 ```text
-uploads/alice/2026/05/07/{uuid}-file.pdf
+uploads/alice/2026/05/07/{upload_id}-report.meta.toml
+uploads/alice/2026/05/07/{upload_id}-report.pdf
 ```
 
-`--user-id`를 생략하면 OS 사용자명이 자동으로 사용됩니다.
+`--user-id`를 생략하면 OS 사용자명이 자동으로 사용됩니다. 같은 명령으로 업로드되는
+2개 파일은 동일한 `{upload_id}`를 공유하므로 Blob Storage 안에서도 한 묶음으로
+식별할 수 있습니다.
 
 ## 에러 처리
 
@@ -222,7 +240,7 @@ uv run uvicorn azure_script.server:app --reload --port 9991
 업로드할 때도 같은 포트를 사용해야 합니다.
 
 ```bash
-uv run azure-upload upload ./file.pdf \
+uv run azure-upload upload ./file.meta.toml ./file.pdf \
   --server-url http://127.0.0.1:9991
 ```
 

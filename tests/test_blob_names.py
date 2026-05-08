@@ -25,7 +25,19 @@ def test_sanitize_user_id_rejects_empty_names() -> None:
 
 def test_build_blob_name_scopes_to_user_and_date() -> None:
     now = datetime(2026, 5, 7, tzinfo=timezone.utc)
-    blob_name = build_blob_name("../alice", "report.pdf", now=now)
+    blob_name = build_blob_name(
+        "../alice",
+        "report.pdf",
+        now=now,
+        upload_id="upload123",
+    )
 
     assert blob_name.startswith("uploads/alice/2026/05/07/")
-    assert blob_name.endswith("-report.pdf")
+    assert blob_name.endswith("upload123-report.pdf")
+
+
+def test_build_blob_name_rejects_unsafe_upload_id() -> None:
+    now = datetime(2026, 5, 7, tzinfo=timezone.utc)
+
+    with pytest.raises(ValueError):
+        build_blob_name("alice", "report.pdf", now=now, upload_id="../bad")
