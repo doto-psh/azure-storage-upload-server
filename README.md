@@ -32,6 +32,12 @@ LiteLLM Workflow.pdf
 
 두 파일의 `<name>`이 다르면 업로드할 수 없습니다.
 
+사용자 ID는 사내 이메일 계정명을 사용하는 것을 권장합니다.
+
+```text
+user01@example.com -> user01
+```
+
 처리 기준:
 
 - 같은 이름의 메타 파일이 없으면 메타 파일과 원본 문서를 `upload`
