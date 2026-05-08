@@ -5,6 +5,8 @@ const dataInput = document.querySelector("#data-file");
 const metadataName = document.querySelector("#metadata-name");
 const dataName = document.querySelector("#data-name");
 const pairStatus = document.querySelector("#pair-status");
+const storageAccountName = document.querySelector("#storage-account-name");
+const storageContainerName = document.querySelector("#storage-container-name");
 const uploadButton = document.querySelector("#upload-button");
 const resetButton = document.querySelector("#reset-button");
 const serverStatus = document.querySelector("#server-status");
@@ -157,6 +159,22 @@ function updatePairStatus() {
     `규칙에 맞습니다. Blob Storage에서는 ${metadataBase} 파일 묶음으로 처리됩니다.`,
     "ok",
   );
+}
+
+async function loadUiConfig() {
+  try {
+    const response = await fetch("/ui/config");
+    if (!response.ok) {
+      throw new Error(`status ${response.status}`);
+    }
+
+    const config = await response.json();
+    storageAccountName.textContent = config.storage_account_name;
+    storageContainerName.textContent = config.storage_container_name;
+  } catch {
+    storageAccountName.textContent = "확인 실패";
+    storageContainerName.textContent = "확인 실패";
+  }
 }
 
 async function buildPlanError(response) {
@@ -332,6 +350,7 @@ function handleReset() {
 }
 
 userIdInput.value = localStorage.getItem(USER_ID_KEY) || "";
+loadUiConfig();
 metadataInput.addEventListener("change", updateFileLabels);
 dataInput.addEventListener("change", updateFileLabels);
 form.addEventListener("submit", handleSubmit);

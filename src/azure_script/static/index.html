@@ -17,6 +17,20 @@
           <div id="server-status" class="server-status" aria-live="polite">대기 중</div>
         </div>
 
+        <section class="storage-panel" aria-labelledby="storage-title">
+          <h2 id="storage-title">대상 Blob Storage</h2>
+          <dl class="storage-details">
+            <div>
+              <dt>Storage Account</dt>
+              <dd id="storage-account-name">불러오는 중</dd>
+            </div>
+            <div>
+              <dt>Container</dt>
+              <dd id="storage-container-name">불러오는 중</dd>
+            </div>
+          </dl>
+        </section>
+
         <form id="upload-form" class="upload-form">
           <label class="field">
             <span>사용자 ID</span>

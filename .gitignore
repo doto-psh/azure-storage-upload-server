@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 upload_users.json
 /files
+/images

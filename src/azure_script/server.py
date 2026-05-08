@@ -49,6 +49,11 @@ class UploadPlanResponse(BaseModel):
     uploads: list[UploadTarget] = Field(default_factory=list)
 
 
+class UiConfigResponse(BaseModel):
+    storage_account_name: str
+    storage_container_name: str
+
+
 app = FastAPI(title="Azure Blob Upload SAS Issuer")
 _STATIC_DIR = Path(__file__).with_name("static")
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
@@ -67,6 +72,14 @@ def healthz() -> dict[str, str]:
 @app.get("/", include_in_schema=False)
 def upload_ui() -> FileResponse:
     return FileResponse(_STATIC_DIR / "index.html")
+
+
+@app.get("/ui/config", response_model=UiConfigResponse)
+def ui_config(settings: Settings = Depends(get_settings)) -> UiConfigResponse:
+    return UiConfigResponse(
+        storage_account_name=settings.azure_storage_account_name,
+        storage_container_name=settings.azure_storage_container_name,
+    )
 
 
 @app.post("/uploads/plan", response_model=UploadPlanResponse)

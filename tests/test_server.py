@@ -25,6 +25,8 @@ class FakeIssuer:
 
 class FakeSettings:
     max_upload_bytes = 100
+    azure_storage_account_name = "testaccount"
+    azure_storage_container_name = "testcontainer"
 
 
 class FailingIssuer:
@@ -64,10 +66,23 @@ def test_upload_ui_is_served() -> None:
 
     assert response.status_code == 200
     assert "메타데이터 파일 업로드" in response.text
+    assert "대상 Blob Storage" in response.text
     assert "파일명 확인" in response.text
     assert "보고서.meta.toml" in response.text
     assert "Blob Storage 내 저장 경로" in response.text
     assert "/static/app.js" in response.text
+
+
+def test_ui_config_returns_public_storage_names_only() -> None:
+    client = TestClient(app)
+
+    response = client.get("/ui/config")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "storage_account_name": "testaccount",
+        "storage_container_name": "testcontainer",
+    }
 
 
 def test_upload_ui_static_assets_are_served() -> None:

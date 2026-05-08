@@ -159,13 +159,79 @@ uv run uvicorn azure_script.server:app --host 0.0.0.0 --port 9990
 http://<server-host>:9990/
 ```
 
-## 7. Web UI에서 업로드
+## 7. Azure Storage CORS 및 권한 설정
+
+> 중요: 이 섹션은 **관리자가 지정한 Storage Account와 Storage Container를 사용하지 않을 때만** 확인합니다.
+>
+> 관리자가 이미 제공한 Storage Account / Container / App Registration 값을 그대로 사용한다면, 일반 사용자가 이 설정을 직접 변경하지 않습니다.
+
+Web UI는 브라우저에서 Azure Blob Storage SAS URL로 직접 `PUT` 업로드합니다.
+
+따라서 직접 만든 Storage Account 또는 관리자가 지정하지 않은 별도 Storage Account를 사용할 경우, Azure Storage Account의 Blob service CORS 설정에 Web UI 주소를 추가해야 합니다.
+
+Azure Portal:
+
+```text
+Storage Account
+-> Settings
+-> Resource sharing (CORS)
+-> Blob service
+```
+
+로컬 실행 예:
+
+```text
+Allowed origins: http://127.0.0.1:9990
+Allowed methods: PUT, OPTIONS
+Allowed headers: x-ms-blob-type, content-type, x-ms-*
+Exposed headers: *
+Max age: 3600
+```
+
+사내 서버 실행 예:
+
+```text
+Allowed origins: http://<server-host>:9990
+Allowed methods: PUT, OPTIONS
+Allowed headers: x-ms-blob-type, content-type, x-ms-*
+Exposed headers: *
+Max age: 3600
+```
+
+브라우저 주소창의 origin과 CORS의 Allowed origins가 정확히 같아야 합니다.
+
+예를 들어 아래 값들은 서로 다른 origin입니다.
+
+```text
+http://127.0.0.1:9990
+http://localhost:9990
+http://127.0.0.1:9992
+```
+
+관리자가 지정하지 않은 별도 Storage Account를 사용할 경우, `.env`의 `AZURE_CLIENT_ID`에 해당하는 App Registration / Service Principal에 아래 권한도 필요합니다.
+
+```text
+Storage Blob Delegator
+Storage Blob Data Contributor
+```
+
+권한 범위:
+
+```text
+Storage Blob Delegator: Storage Account 범위
+Storage Blob Data Contributor: Storage Account 또는 대상 Container 범위
+```
+
+다시 한 번 강조하면, **관리자가 지정한 Storage Account와 Container를 그대로 사용하는 경우에는 이 섹션의 CORS/권한 설정을 새로 하지 않습니다.**
+
+## 8. Web UI에서 업로드
 
 브라우저에서 Web UI를 엽니다.
 
 ```text
 http://127.0.0.1:9990/
 ```
+![화면](images/image.png)
 
 화면에서 다음 값을 입력합니다.
 
@@ -200,7 +266,7 @@ Other Workflow.pdf
 
 규칙에 맞으면 `업로드` 버튼을 누릅니다.
 
-## 8. 처리 결과 확인
+## 9. 처리 결과 확인
 
 업로드 결과는 세 가지 중 하나입니다.
 
@@ -229,6 +295,7 @@ Blob Storage에 같은 meta 파일 이름은 있지만 내용이 달라서 meta 
 ```
 
 결과 화면의 `Blob Storage 내 저장 경로`에서 실제 저장 경로를 확인할 수 있습니다.
+![Blob Storage 내 저장 경로 예시](images/image-1.png)
 
 예:
 
@@ -237,7 +304,7 @@ uploads/parksh/LiteLLM_Workflow/LiteLLM_Workflow.meta.toml
 uploads/parksh/LiteLLM_Workflow/LiteLLM_Workflow.pdf
 ```
 
-## 9. 문제 해결
+## 10. 문제 해결
 
 ### uv 명령어를 찾을 수 없음
 
@@ -321,7 +388,7 @@ UI에 다음 메시지가 나오면 두 파일의 `<name>`이 다른 상태입�
 report.meta.toml
 ```
 
-## 10. 보안 주의사항
+## 11. 보안 주의사항
 
 아래 파일과 값은 Git에 올리면 안 됩니다.
 
