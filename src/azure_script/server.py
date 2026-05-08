@@ -1,9 +1,12 @@
 import hashlib
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from azure.core.exceptions import AzureError, HttpResponseError
 from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from azure_script.azure_sas import AzureBlobSasIssuer
@@ -47,6 +50,8 @@ class UploadPlanResponse(BaseModel):
 
 
 app = FastAPI(title="Azure Blob Upload SAS Issuer")
+_STATIC_DIR = Path(__file__).with_name("static")
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 
 @lru_cache
@@ -57,6 +62,11 @@ def get_sas_issuer() -> AzureBlobSasIssuer:
 @app.get("/healthz")
 def healthz() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/", include_in_schema=False)
+def upload_ui() -> FileResponse:
+    return FileResponse(_STATIC_DIR / "index.html")
 
 
 @app.post("/uploads/plan", response_model=UploadPlanResponse)

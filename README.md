@@ -32,7 +32,31 @@ storage account.
 uv run uvicorn azure_script.server:app --reload
 ```
 
+Open the web UI:
+
+```text
+http://127.0.0.1:8000/
+```
+
 ## Upload Files
+
+### Web UI
+
+Use the web UI to enter a `user_id`, select `<name>.meta.toml`, select
+`<name>.<extension>`, and upload. The UI calls the internal upload plan API and
+then uploads files directly to Azure Blob Storage with SAS URLs.
+
+For browser uploads, configure Azure Storage CORS for the UI origin. Local
+development typically needs:
+
+```text
+Allowed origins: http://127.0.0.1:8000
+Allowed methods: PUT, OPTIONS
+Allowed headers: x-ms-blob-type, content-type, x-ms-*
+Exposed headers: *
+```
+
+### CLI
 
 ```bash
 uv run azure-upload upload ./file.meta.toml ./file.pdf \

@@ -1,13 +1,13 @@
 # Azure Blob Upload Architecture
 
-이 프로젝트는 사내 사용자가 Python CLI 스크립트로 파일을 Azure Blob Storage에 업로드하도록 만든 구조입니다.
+이 프로젝트는 사내 사용자가 Python CLI 또는 웹 UI로 파일을 Azure Blob Storage에 업로드하도록 만든 구조입니다.
 
 핵심 목표는 사용자가 Azure Portal을 쓰지 않고 파일을 올리되, 사용자에게 Storage Account Key, Connection String, Client Secret 같은 Azure 비밀 값을 전달하지 않는 것입니다.
 
 ## 전체 구조
 
 ```text
-사용자 PC / 업로드 CLI
+사용자 PC / 업로드 CLI 또는 Web UI
   |
   | 1. meta 파일 해시, 파일명, 파일 크기, user_id로 업로드 계획 요청
   v
@@ -23,7 +23,7 @@ FastAPI SAS 발급 서버
   |
   | 4. skip/upload/update 결과와 SAS URL 반환
   v
-사용자 PC / 업로드 CLI
+사용자 PC / 업로드 CLI 또는 Web UI
   |
   | 5. upload/update일 때만 SAS URL로 Azure Blob Storage에 직접 PUT 업로드
   v
@@ -32,9 +32,9 @@ Azure Blob Storage Container
 
 ## 구성 요소
 
-### 사용자 업로드 CLI
+### 사용자 업로드 CLI / Web UI
 
-사용자가 직접 실행하는 명령줄 도구입니다.
+사용자가 직접 실행하는 명령줄 도구 또는 브라우저 화면입니다.
 
 사용자는 다음 정보만 알면 됩니다.
 
@@ -44,7 +44,7 @@ Azure Blob Storage Container
 - 선택 사항: user_id
 ```
 
-사용자 CLI는 Azure 비밀 값을 알 필요가 없습니다.
+사용자 CLI와 Web UI는 Azure 비밀 값을 알 필요가 없습니다.
 
 사용자에게 전달하면 안 되는 값:
 
@@ -81,14 +81,20 @@ Azure는 아무 서버에게나 SAS URL 생성 권한을 주지 않습니다. �
 
 ## 업로드 동작
 
-사용자가 CLI를 실행합니다.
+사용자는 CLI를 실행하거나 웹 UI에서 파일 2개를 선택합니다.
 
 ```bash
 uv run azure-upload upload ./report.meta.toml ./report.pdf \
   --server-url http://127.0.0.1:9990
 ```
 
-CLI는 다음 정보를 서버에 한 번 보냅니다.
+웹 UI는 서버 루트 URL에서 접근합니다.
+
+```text
+http://127.0.0.1:9990/
+```
+
+CLI와 Web UI는 다음 정보를 서버에 한 번 보냅니다.
 
 ```json
 {
@@ -103,7 +109,7 @@ CLI는 다음 정보를 서버에 한 번 보냅니다.
 }
 ```
 
-`user_id`를 직접 지정하지 않으면 CLI는 OS 사용자명을 사용합니다.
+CLI에서 `user_id`를 직접 지정하지 않으면 OS 사용자명을 사용합니다. Web UI에서는 사용자가 입력한 `user_id`를 사용합니다.
 
 서버는 사용자별 고정 blob 경로를 자동 생성합니다.
 
@@ -127,7 +133,7 @@ uploads/parksh/report/report.pdf
 - 같은 meta 파일 이름이 없음: upload
 ```
 
-`skip`이면 SAS URL을 만들지 않고 CLI도 파일을 업로드하지 않습니다.
+`skip`이면 SAS URL을 만들지 않고 CLI/Web UI도 파일을 업로드하지 않습니다.
 
 `upload` 또는 `update`이면 서버는 Azure에 User Delegation SAS를 요청하고, meta/data 두 blob에 대해서만 유효한 업로드 URL을 반환합니다.
 
@@ -140,7 +146,7 @@ SAS URL의 특징:
 - read/list/delete 권한 없음
 ```
 
-CLI는 `upload` 또는 `update`일 때만 서버가 반환한 SAS URL로 Azure Blob Storage에 직접 업로드합니다. `skip`일 때는 원본 문서 내용도 비교하지 않습니다.
+CLI와 Web UI는 `upload` 또는 `update`일 때만 서버가 반환한 SAS URL로 Azure Blob Storage에 직접 업로드합니다. `skip`일 때는 원본 문서 내용도 비교하지 않습니다.
 
 ## 서버 실행 방법
 
@@ -186,9 +192,26 @@ curl http://127.0.0.1:9990/healthz
 {"status":"ok"}
 ```
 
-## 사용자가 스크립트로 업로드하는 방법
+웹 UI 접속:
 
-사용자는 프로젝트 또는 배포된 CLI를 받은 뒤 다음 명령으로 업로드합니다.
+```text
+http://127.0.0.1:9990/
+```
+
+브라우저가 Azure Blob SAS URL로 직접 `PUT` 업로드하므로 Azure Storage Account에 CORS 설정이 필요합니다.
+
+```text
+Allowed origins: http://127.0.0.1:9990 또는 사내 서버 origin
+Allowed methods: PUT, OPTIONS
+Allowed headers: x-ms-blob-type, content-type, x-ms-*
+Exposed headers: *
+```
+
+## 사용자가 업로드하는 방법
+
+웹 UI 사용자는 서버 URL에 접속해서 `user_id`, meta 파일, 원본 문서를 선택한 뒤 업로드합니다.
+
+CLI 사용자는 프로젝트 또는 배포된 CLI를 받은 뒤 다음 명령으로 업로드합니다.
 업로드는 항상 2개 파일을 한 묶음으로 처리합니다.
 
 필수 파일 이름 규칙:
@@ -281,7 +304,7 @@ Storage Blob Data Contributor: 기존 meta 조회와 blob 업로드/덮어쓰기
 사용자에게 전달되는 것은 다음뿐입니다.
 
 ```text
-- 업로드 CLI
+- 업로드 CLI 또는 Web UI URL
 - SAS 발급 서버 URL
 - 선택 사항: user_id
 ```

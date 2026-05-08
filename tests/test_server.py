@@ -57,6 +57,28 @@ def teardown_function() -> None:
     app.dependency_overrides.clear()
 
 
+def test_upload_ui_is_served() -> None:
+    client = TestClient(app)
+
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert "메타데이터 파일 업로드" in response.text
+    assert "파일명 확인" in response.text
+    assert "보고서.meta.toml" in response.text
+    assert "Blob Storage 내 저장 경로" in response.text
+    assert "/static/app.js" in response.text
+
+
+def test_upload_ui_static_assets_are_served() -> None:
+    client = TestClient(app)
+
+    response = client.get("/static/app.js")
+
+    assert response.status_code == 200
+    assert "requestUploadPlan" in response.text
+
+
 def test_create_upload_plan_uploads_when_metadata_is_missing() -> None:
     client = TestClient(app)
 

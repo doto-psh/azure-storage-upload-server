@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Azure Blob 업로드</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="workspace" aria-labelledby="page-title">
+        <div class="heading">
+          <div>
+            <p class="eyebrow">Azure Blob Storage</p>
+            <h1 id="page-title">메타데이터 파일 업로드</h1>
+          </div>
+          <div id="server-status" class="server-status" aria-live="polite">대기 중</div>
+        </div>
+
+        <form id="upload-form" class="upload-form">
+          <label class="field">
+            <span>사용자 ID</span>
+            <input
+              id="user-id"
+              name="user-id"
+              type="text"
+              autocomplete="username"
+              placeholder="parksh"
+              required
+            />
+          </label>
+
+          <div class="file-grid">
+            <label class="file-field">
+              <span>메타데이터 파일</span>
+              <input id="metadata-file" type="file" accept=".toml" required />
+              <strong id="metadata-name">파일을 선택하세요</strong>
+              <small>예: 보고서.meta.toml</small>
+            </label>
+
+            <label class="file-field">
+              <span>원본 문서</span>
+              <input id="data-file" type="file" required />
+              <strong id="data-name">파일을 선택하세요</strong>
+              <small>예: 보고서.pdf, 보고서.docx</small>
+            </label>
+          </div>
+
+          <div class="pair-guidance" aria-live="polite">
+            <strong>파일명 확인</strong>
+            <p>메타데이터 파일과 원본 문서의 이름이 같아야 합니다.</p>
+            <p class="pair-example">
+              예: <code>보고서.meta.toml</code> + <code>보고서.pdf</code>
+            </p>
+            <p id="pair-status" class="pair-status">두 파일을 선택하면 규칙 검사 결과가 표시됩니다.</p>
+          </div>
+
+          <div class="actions">
+            <button id="upload-button" type="submit">업로드</button>
+            <button id="reset-button" type="button" class="secondary">초기화</button>
+          </div>
+        </form>
+
+        <section class="result-panel" aria-labelledby="result-title">
+          <div class="result-heading">
+            <h2 id="result-title">처리 결과</h2>
+            <span id="action-badge" class="badge">대기</span>
+          </div>
+          <div id="message" class="message">메타데이터 파일과 원본 문서를 선택하세요.</div>
+          <div class="progress-list">
+            <div class="progress-row">
+              <span>메타</span>
+              <progress id="metadata-progress" value="0" max="100"></progress>
+              <strong id="metadata-state">대기</strong>
+            </div>
+            <div class="progress-row">
+              <span>문서</span>
+              <progress id="data-progress" value="0" max="100"></progress>
+              <strong id="data-state">대기</strong>
+            </div>
+          </div>
+          <div class="path-heading">
+            <h3>Blob Storage 내 저장 경로</h3>
+          </div>
+          <pre id="blob-output" class="blob-output">아직 생성된 경로가 없습니다.</pre>
+        </section>
+      </section>
+    </main>
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>
