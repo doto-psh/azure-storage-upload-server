@@ -1,4 +1,5 @@
 import getpass
+import hashlib
 import mimetypes
 from pathlib import Path
 
@@ -52,14 +53,17 @@ def _build_upload_plan_payload(
     data_file: Path,
     user_id: str,
 ) -> dict[str, object]:
-    # 서버는 meta 파일 내용만 받아 기존 meta blob과 비교한다.
+    metadata_bytes = metadata_file.read_bytes()
+    metadata_sha256 = hashlib.sha256(metadata_bytes).hexdigest()
+
+    # 서버는 meta 파일의 원본 바이트 해시로 기존 meta blob과 비교한다.
     # 원본 문서 내용은 서버로 보내지 않고, 필요할 때만 SAS URL로 Azure에 직접 업로드한다.
     return {
         "user_id": user_id,
         "metadata_filename": metadata_file.name,
-        "metadata_content": metadata_file.read_text(encoding="utf-8"),
+        "metadata_sha256": metadata_sha256,
         "metadata_content_type": _guess_content_type(metadata_file),
-        "metadata_size_bytes": metadata_file.stat().st_size,
+        "metadata_size_bytes": len(metadata_bytes),
         "data_filename": data_file.name,
         "data_content_type": _guess_content_type(data_file),
         "data_size_bytes": data_file.stat().st_size,

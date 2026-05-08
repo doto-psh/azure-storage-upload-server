@@ -48,8 +48,8 @@ Both files must share the same `<name>`. For example, `report.meta.toml` and
 `report.pdf` are valid. `report.meta.toml` and `invoice.pdf` are rejected before
 any Azure upload starts.
 
-The server compares the local `.meta.toml` content with the existing metadata
-blob for the same `user_id` and `<name>`:
+The server compares the local `.meta.toml` byte hash with the existing metadata
+blob hash for the same `user_id` and `<name>`:
 
 - Same metadata content: skip both files.
 - Same metadata filename but different metadata content: update both files.

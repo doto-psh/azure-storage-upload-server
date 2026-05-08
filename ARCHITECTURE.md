@@ -9,7 +9,7 @@
 ```text
 사용자 PC / 업로드 CLI
   |
-  | 1. meta 파일 내용, 파일명, 파일 크기, user_id로 업로드 계획 요청
+  | 1. meta 파일 해시, 파일명, 파일 크기, user_id로 업로드 계획 요청
   v
 FastAPI SAS 발급 서버
   |
@@ -57,7 +57,7 @@ Azure Blob Storage Container
 
 ### FastAPI SAS 발급 서버
 
-서버는 사용자의 업로드 요청을 받아 기존 meta 파일 내용과 비교하고, 필요한 경우 Azure Blob Storage에 업로드 가능한 짧은 SAS URL을 발급합니다.
+서버는 사용자의 업로드 요청을 받아 기존 meta 파일의 바이트 해시와 비교하고, 필요한 경우 Azure Blob Storage에 업로드 가능한 짧은 SAS URL을 발급합니다.
 
 서버만 다음 값을 가지고 있습니다.
 
@@ -94,7 +94,7 @@ CLI는 다음 정보를 서버에 한 번 보냅니다.
 {
   "user_id": "parksh",
   "metadata_filename": "report.meta.toml",
-  "metadata_content": "title = \"Report\"",
+  "metadata_sha256": "f3a1...",
   "metadata_content_type": "application/toml",
   "metadata_size_bytes": 16,
   "data_filename": "report.pdf",

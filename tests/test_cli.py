@@ -190,6 +190,8 @@ def test_upload_cli_uses_os_username_by_default(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
     assert plan_route.calls.last.request.content
     assert b'"user_id":"parksh"' in plan_route.calls.last.request.content
+    assert b'"metadata_sha256"' in plan_route.calls.last.request.content
+    assert b'"metadata_content"' not in plan_route.calls.last.request.content
 
 
 def test_upload_cli_rejects_mismatched_metadata_and_data_names(tmp_path: Path) -> None:

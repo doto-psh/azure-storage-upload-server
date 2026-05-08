@@ -1,3 +1,4 @@
+import hashlib
 from functools import lru_cache
 from typing import Literal
 
@@ -13,7 +14,7 @@ from azure_script.settings import Settings, get_settings
 class UploadPlanRequest(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=120)
     metadata_filename: str = Field(..., min_length=1, max_length=255)
-    metadata_content: str
+    metadata_sha256: str = Field(..., min_length=64, max_length=64)
     metadata_content_type: str = Field(
         "application/toml",
         min_length=1,
@@ -87,9 +88,13 @@ def create_upload_plan(
 
     try:
         existing_metadata = issuer.download_blob_bytes(blob_names.metadata)
-        metadata_bytes = request.metadata_content.encode("utf-8")
+        existing_metadata_sha256 = (
+            hashlib.sha256(existing_metadata).hexdigest()
+            if existing_metadata is not None
+            else None
+        )
 
-        if existing_metadata == metadata_bytes:
+        if existing_metadata_sha256 == request.metadata_sha256:
             # 기존 meta 내용이 완전히 같으면 원본 문서는 비교하지 않고 전체 업로드를 건너뛴다.
             return _build_plan_response("skip", blob_names)
 

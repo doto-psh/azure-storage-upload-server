@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timezone
 
 from azure.core.exceptions import HttpResponseError
@@ -34,13 +35,13 @@ class FailingIssuer:
         raise HttpResponseError(message="not authorized")
 
 
-def _request_payload(metadata_content: str = 'title = "Report"') -> dict[str, object]:
+def _request_payload(metadata_bytes: bytes = b'title = "Report"') -> dict[str, object]:
     return {
         "user_id": "alice",
         "metadata_filename": "report.meta.toml",
-        "metadata_content": metadata_content,
+        "metadata_sha256": hashlib.sha256(metadata_bytes).hexdigest(),
         "metadata_content_type": "application/toml",
-        "metadata_size_bytes": len(metadata_content.encode("utf-8")),
+        "metadata_size_bytes": len(metadata_bytes),
         "data_filename": "report.pdf",
         "data_content_type": "application/pdf",
         "data_size_bytes": 10,
@@ -78,18 +79,31 @@ def test_create_upload_plan_uploads_when_metadata_is_missing() -> None:
 
 
 def test_create_upload_plan_skips_when_metadata_is_unchanged() -> None:
-    metadata_content = 'title = "Report"'
+    metadata_bytes = b'title = "Report"'
     app.dependency_overrides[get_sas_issuer] = lambda: FakeIssuer(
-        existing_metadata=metadata_content.encode("utf-8")
+        existing_metadata=metadata_bytes
     )
     client = TestClient(app)
 
-    response = client.post("/uploads/plan", json=_request_payload(metadata_content))
+    response = client.post("/uploads/plan", json=_request_payload(metadata_bytes))
 
     assert response.status_code == 200
     body = response.json()
     assert body["action"] == "skip"
     assert body["uploads"] == []
+
+
+def test_create_upload_plan_skips_when_crlf_metadata_bytes_match() -> None:
+    metadata_bytes = b'title = "Report"\r\n'
+    app.dependency_overrides[get_sas_issuer] = lambda: FakeIssuer(
+        existing_metadata=metadata_bytes
+    )
+    client = TestClient(app)
+
+    response = client.post("/uploads/plan", json=_request_payload(metadata_bytes))
+
+    assert response.status_code == 200
+    assert response.json()["action"] == "skip"
 
 
 def test_create_upload_plan_updates_when_metadata_changed() -> None:
@@ -98,7 +112,7 @@ def test_create_upload_plan_updates_when_metadata_changed() -> None:
     )
     client = TestClient(app)
 
-    response = client.post("/uploads/plan", json=_request_payload('title = "New"'))
+    response = client.post("/uploads/plan", json=_request_payload(b'title = "New"'))
 
     assert response.status_code == 200
     body = response.json()
